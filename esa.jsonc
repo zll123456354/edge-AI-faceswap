@@ -1,6 +1,6 @@
 {
-  "name": "edge-privacy-gateway",
-  "entry": "edge/api/gateway.ts",
+  "name": "edge-ai-faceswap",
+  "entry": "edge/api/faceswap.ts",
   "installCommand": "npm install",
   "assets": {
     "directory": "./dist",
