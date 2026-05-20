@@ -67,17 +67,43 @@
           <input v-model.trim="form.photo_key" placeholder="输入检测后生成的照片凭证" />
         </label>
 
-        <div class="form-grid">
-          <label>
+        <section class="choice-section" aria-label="证件照规格">
+          <div class="choice-head">
             <span>证件照规格</span>
-            <input v-model.trim="form.spec" placeholder="证件照规格 ID，如 1 或 12" />
-          </label>
+            <small>{{ selectedSpecLabel }}</small>
+          </div>
+          <div class="choice-grid">
+            <button
+              v-for="option in specOptions"
+              :key="option.id"
+              :class="['choice-card', { active: form.spec === option.id }]"
+              type="button"
+              @click="selectSpec(option.id)"
+            >
+              <strong>{{ option.name }}</strong>
+              <span>{{ option.size }}</span>
+            </button>
+          </div>
+        </section>
 
-          <label>
+        <section class="choice-section" aria-label="背景颜色">
+          <div class="choice-head">
             <span>背景颜色</span>
-            <input v-model.trim="form.bk" placeholder="blue / red / white / #RRGGBB" />
-          </label>
-        </div>
+            <small>{{ selectedBackgroundLabel }}</small>
+          </div>
+          <div class="swatch-row">
+            <button
+              v-for="option in backgroundOptions"
+              :key="option.value"
+              :class="['swatch-button', { active: form.bk === option.value }]"
+              type="button"
+              @click="selectBackground(option.value)"
+            >
+              <i :style="{ background: option.color }" />
+              <span>{{ option.label }}</span>
+            </button>
+          </div>
+        </section>
 
         <details class="advanced-panel">
           <summary>更多可选参数</summary>
@@ -95,12 +121,12 @@
           {{ loading ? "制作中..." : "开始制作证件照" }}
         </button>
 
-        <div class="checkout-preview">
+        <div class="delivery-card">
           <div>
-            <p>电子照交付</p>
-            <strong>高清文件下载</strong>
+            <p>下载权益</p>
+            <strong>当前可免费下载电子照</strong>
           </div>
-          <span>待接入支付</span>
+          <span>付费功能后续开启</span>
         </div>
       </form>
 
@@ -128,17 +154,9 @@
               <p class="section-label">成品预览</p>
               <h2>电子证件照</h2>
             </div>
-            <div class="action-row">
-              <button
-                v-if="resultImage"
-                class="ghost-button compact"
-                :disabled="downloading"
-                type="button"
-                @click="downloadResult"
-              >
-                {{ downloading ? "下载中..." : "下载电子证件照" }}
-              </button>
-            </div>
+            <span :class="['status-pill', resultImage ? 'success' : 'idle']">
+              {{ resultImage ? "已生成" : "待生成" }}
+            </span>
           </div>
 
           <div class="image-stage result-stage">
@@ -146,12 +164,34 @@
             <div v-else class="empty-state">提交后会在这里展示证件照成品。</div>
           </div>
 
+          <div v-if="resultImage" class="download-panel">
+            <div>
+              <p>高清电子版</p>
+              <strong>{{ selectedSpecLabel }} · {{ selectedBackgroundLabel }}</strong>
+            </div>
+            <button
+              class="primary-button download-button"
+              :disabled="downloading"
+              type="button"
+              @click="downloadResult"
+            >
+              {{ downloading ? "下载中..." : "下载电子证件照" }}
+            </button>
+          </div>
+
           <div v-if="resultImage || returnedPhotoKey" class="result-meta">
             <span v-if="resultSize">尺寸 {{ resultSize }}</span>
+            <span>格式 {{ resultMimeType === "png" ? "PNG" : "JPG" }}</span>
             <span v-if="returnedPhotoKey">照片凭证 {{ returnedPhotoKey }}</span>
           </div>
+
+          <div v-if="resultImage" class="next-actions">
+            <button class="text-button compact" type="button" @click="resetResult">重新生成</button>
+            <button class="text-button compact" type="button" @click="clearPhoto">换一张照片</button>
+          </div>
+
           <details v-if="result" class="result-detail">
-            <summary>接口明细</summary>
+            <summary>更多信息</summary>
             <button class="text-button compact" type="button" @click="copyResult">复制 JSON</button>
             <pre class="result-json">{{ formattedResult }}</pre>
           </details>
@@ -183,6 +223,18 @@ const error = ref("");
 const loading = ref(false);
 const downloading = ref(false);
 
+const specOptions = [
+  { id: "12", name: "一寸照", size: "571 x 800" },
+  { id: "1", name: "常用证件照", size: "按接口规格" },
+  { id: "2", name: "二寸照", size: "常用尺寸" },
+];
+
+const backgroundOptions = [
+  { value: "blue", label: "蓝底", color: "#3d97e8" },
+  { value: "white", label: "白底", color: "#ffffff" },
+  { value: "red", label: "红底", color: "#df3e4f" },
+];
+
 const form = reactive<FormState>({
   photo_key: "",
   type: "jpg",
@@ -195,6 +247,14 @@ const applyPreset = () => {
   form.spec = "12";
   form.bk = "blue";
   form.beauty_degree = "1.5";
+};
+
+const selectSpec = (spec: string) => {
+  form.spec = spec;
+};
+
+const selectBackground = (background: string) => {
+  form.bk = background;
 };
 
 const switchMode = (mode: SourceMode) => {
@@ -214,6 +274,16 @@ const switchMode = (mode: SourceMode) => {
 const isReady = computed(() => {
   const hasSource = sourceMode.value === "upload" ? Boolean(photoBase64.value) : Boolean(form.photo_key);
   return Boolean(hasSource && form.spec.trim() && form.bk.trim());
+});
+
+const selectedSpecLabel = computed(() => {
+  const option = specOptions.find((item) => item.id === form.spec);
+  return option ? option.name : "自定义规格";
+});
+
+const selectedBackgroundLabel = computed(() => {
+  const option = backgroundOptions.find((item) => item.value === form.bk);
+  return option ? option.label : "自定义背景";
 });
 
 const formattedResult = computed(() => JSON.stringify(result.value, null, 2));
@@ -380,6 +450,20 @@ const submit = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const resetResult = () => {
+  result.value = null;
+  error.value = "";
+};
+
+const clearPhoto = () => {
+  resetResult();
+  photoBase64.value = "";
+  photoPreviewUrl.value = "";
+  uploadedFileName.value = "";
+  form.photo_key = "";
+  sourceMode.value = "upload";
 };
 
 const copyResult = async () => {
