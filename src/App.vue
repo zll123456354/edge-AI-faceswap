@@ -6,12 +6,12 @@
         <h1>证件照制作</h1>
         <p class="summary">
           上传 JPG 或 PNG，自动转成接口要求的原始 Base64，由 ESA 代发到阿里云
-          `idphoto/arrange`。同一张图也可以直接复用 `photo_key`，减少重复传输。
+          `idphoto/make`。同一张图也可以直接复用检测接口返回的 `photo_key`，减少重复传输。
         </p>
         <div class="hero-notes">
           <span>浏览器不暴露 AppCode</span>
           <span>支持 photo_key 联动</span>
-          <span>可调背景色与尺寸</span>
+          <span>JSON 制作接口</span>
         </div>
       </div>
 
@@ -19,8 +19,8 @@
         <p class="card-kicker">接口规则</p>
         <ul class="rule-list">
           <li>`photo` 传原始 Base64，不带 `data:image/...` 前缀。</li>
-          <li>`photo_key` 模式下，不再传 `photo` 和 `type`。</li>
-          <li>使用 `size` 时，`spec` 必须为 `12`。</li>
+          <li>制作接口地址为 `idphoto/make`，请求体使用 JSON。</li>
+          <li>`photo_key` 来自环境检测等接口；与 `photo` 同时出现时由上游决定生效项。</li>
         </ul>
       </aside>
     </section>
@@ -77,54 +77,12 @@
           </label>
         </div>
 
-        <div class="form-grid">
-          <label>
-            <span>size</span>
-            <input v-model.trim="form.size" placeholder='可选，示例 "480x640"' />
-          </label>
-
-          <label>
-            <span>dpi</span>
-            <input v-model.trim="form.dpi" inputmode="numeric" placeholder="可选，默认 300" />
-          </label>
-        </div>
-
         <details class="advanced-panel">
           <summary>更多可选参数</summary>
           <div class="advanced-grid">
             <label>
               <span>beauty_degree</span>
-              <input v-model.trim="form.beauty_degree" placeholder="1.0 - 5.0" />
-            </label>
-
-            <label>
-              <span>file_size</span>
-              <input v-model.trim="form.file_size" placeholder='例如 "10,100"' />
-            </label>
-
-            <label>
-              <span>face_ratio</span>
-              <input v-model.trim="form.face_ratio" placeholder="0 - 1.0" />
-            </label>
-
-            <label>
-              <span>face_center_y</span>
-              <input v-model.trim="form.face_center_y" placeholder="默认 0.45" />
-            </label>
-
-            <label>
-              <span>top_empty</span>
-              <input v-model.trim="form.top_empty" placeholder='例如 "10,30"' />
-            </label>
-
-            <label class="toggle">
-              <input v-model="form.with_photo_key" type="checkbox" />
-              <span>返回 photo_key</span>
-            </label>
-
-            <label class="toggle">
-              <input v-model="form.head_pose_correct" type="checkbox" />
-              <span>开启头部正姿</span>
+              <input v-model.trim="form.beauty_degree" placeholder="可选，1.0 - 5.0" />
             </label>
           </div>
         </details>
@@ -185,7 +143,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { createIdPhoto, type IdPhotoArrangeRequest } from "./api/idphoto";
+import { createIdPhoto, type IdPhotoMakeRequest } from "./api/idphoto";
 
 type SourceMode = "upload" | "photo_key";
 type FormState = {
@@ -194,14 +152,6 @@ type FormState = {
   spec: string;
   bk: string;
   beauty_degree: string;
-  size: string;
-  file_size: string;
-  dpi: string;
-  face_ratio: string;
-  face_center_y: string;
-  top_empty: string;
-  with_photo_key: boolean;
-  head_pose_correct: boolean;
 };
 
 const sourceMode = ref<SourceMode>("upload");
@@ -218,24 +168,12 @@ const form = reactive<FormState>({
   spec: "",
   bk: "blue",
   beauty_degree: "",
-  size: "",
-  file_size: "",
-  dpi: "300",
-  face_ratio: "",
-  face_center_y: "0.45",
-  top_empty: "",
-  with_photo_key: true,
-  head_pose_correct: false,
 });
 
 const applyPreset = () => {
   form.spec = "12";
   form.bk = "blue";
-  form.size = "480x640";
-  form.dpi = "300";
-  form.face_center_y = "0.45";
-  form.with_photo_key = true;
-  form.head_pose_correct = false;
+  form.beauty_degree = "1.5";
 };
 
 const switchMode = (mode: SourceMode) => {
@@ -334,21 +272,10 @@ const validateForm = () => {
   if (sourceMode.value === "photo_key" && !form.photo_key.trim()) return "请填写 photo_key。";
   if (!form.spec.trim()) return "spec 为必填项。";
   if (!form.bk.trim()) return "bk 为必填项。";
-  if (form.size.trim() && form.spec.trim() !== "12") return "使用 size 时，spec 必须设置为 12。";
 
   const beautyDegree = parseFloatField(form.beauty_degree);
   if (beautyDegree !== undefined && (beautyDegree < 1 || beautyDegree > 5)) {
     return "beauty_degree 需要在 1.0 到 5.0 之间。";
-  }
-
-  const faceRatio = parseFloatField(form.face_ratio);
-  if (faceRatio !== undefined && (faceRatio <= 0 || faceRatio > 1)) {
-    return "face_ratio 需要在 0 到 1.0 之间。";
-  }
-
-  const faceCenterY = parseFloatField(form.face_center_y);
-  if (faceCenterY !== undefined && (faceCenterY <= 0 || faceCenterY >= 1)) {
-    return "face_center_y 需要在 0 到 1.0 之间。";
   }
 
   return "";
@@ -390,10 +317,9 @@ const readFileAsDataUrl = (file: File) =>
   });
 
 const buildPayload = () => {
-  const payload: IdPhotoArrangeRequest = {
+  const payload: IdPhotoMakeRequest = {
     spec: form.spec.trim(),
     bk: form.bk.trim(),
-    with_photo_key: form.with_photo_key ? 1 : 0,
   };
 
   if (sourceMode.value === "upload") {
@@ -403,20 +329,9 @@ const buildPayload = () => {
     payload.photo_key = form.photo_key.trim();
   }
 
-  if (form.size.trim()) payload.size = form.size.trim();
-  if (form.file_size.trim()) payload.file_size = form.file_size.trim();
-
   const beautyDegree = parseFloatField(form.beauty_degree);
-  const dpi = parseIntField(form.dpi);
-  const faceRatio = parseFloatField(form.face_ratio);
-  const faceCenterY = parseFloatField(form.face_center_y);
 
   if (beautyDegree !== undefined) payload.beauty_degree = beautyDegree;
-  if (dpi !== undefined) payload.dpi = dpi;
-  if (faceRatio !== undefined) payload.face_ratio = faceRatio;
-  if (faceCenterY !== undefined) payload.face_center_y = faceCenterY;
-  if (form.top_empty.trim()) payload.top_empty = form.top_empty.trim();
-  if (form.head_pose_correct) payload.head_pose_correct = true;
 
   return payload;
 };

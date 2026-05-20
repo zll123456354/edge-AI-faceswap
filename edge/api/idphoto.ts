@@ -1,20 +1,12 @@
 import { API_URL, APP_CODE } from "../env";
 
-type IdPhotoArrangeBody = {
+type IdPhotoMakeBody = {
   photo?: string;
   type?: string;
   photo_key?: string;
-  with_photo_key?: number;
   spec?: string;
   bk?: string;
   beauty_degree?: number;
-  size?: string;
-  file_size?: string;
-  dpi?: number;
-  face_ratio?: number;
-  face_center_y?: number;
-  top_empty?: string;
-  head_pose_correct?: boolean | string | number;
 };
 
 const json = (body: unknown, init: ResponseInit = {}) => {
@@ -64,27 +56,16 @@ const toNumberValue = (value: unknown) => {
   return Number.isFinite(numeric) ? numeric : undefined;
 };
 
-const toBooleanLike = (value: unknown) => {
-  if (value === true || value === false) return value;
-  if (typeof value === "number") return value === 1;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    if (["true", "yes", "1"].includes(normalized)) return true;
-    if (["false", "no", "0"].includes(normalized)) return false;
-  }
-  return undefined;
-};
-
 const parseBody = async (request: Request) => {
   try {
-    return (await request.json()) as IdPhotoArrangeBody;
+    return (await request.json()) as IdPhotoMakeBody;
   } catch {
     return null;
   }
 };
 
-const normalizePayload = (body: IdPhotoArrangeBody) => {
-  const payload: IdPhotoArrangeBody = {
+const normalizePayload = (body: IdPhotoMakeBody) => {
+  const payload: IdPhotoMakeBody = {
     spec: toStringValue(body.spec),
     bk: toStringValue(body.bk),
   };
@@ -92,56 +73,29 @@ const normalizePayload = (body: IdPhotoArrangeBody) => {
   const photo = toStringValue(body.photo);
   const photoType = toStringValue(body.type).toLowerCase();
   const photoKey = toStringValue(body.photo_key);
-  const size = toStringValue(body.size);
-  const fileSize = toStringValue(body.file_size);
-  const topEmpty = toStringValue(body.top_empty);
-  const withPhotoKey = toNumberValue(body.with_photo_key);
   const beautyDegree = toNumberValue(body.beauty_degree);
-  const dpi = toNumberValue(body.dpi);
-  const faceRatio = toNumberValue(body.face_ratio);
-  const faceCenterY = toNumberValue(body.face_center_y);
-  const headPoseCorrect = toBooleanLike(body.head_pose_correct);
 
   if (photo) payload.photo = photo;
   if (photoType) payload.type = photoType;
   if (photoKey) payload.photo_key = photoKey;
-  if (size) payload.size = size;
-  if (fileSize) payload.file_size = fileSize;
-  if (topEmpty) payload.top_empty = topEmpty;
-  if (withPhotoKey !== undefined) payload.with_photo_key = withPhotoKey;
   if (beautyDegree !== undefined) payload.beauty_degree = beautyDegree;
-  if (dpi !== undefined) payload.dpi = dpi;
-  if (faceRatio !== undefined) payload.face_ratio = faceRatio;
-  if (faceCenterY !== undefined) payload.face_center_y = faceCenterY;
-  if (headPoseCorrect !== undefined) payload.head_pose_correct = headPoseCorrect;
 
   return payload;
 };
 
-const validatePayload = (payload: IdPhotoArrangeBody) => {
+const validatePayload = (payload: IdPhotoMakeBody) => {
   if (!payload.photo && !payload.photo_key) return "photo or photo_key is required";
-  if (payload.photo && payload.photo_key) return "photo and photo_key are mutually exclusive";
   if (payload.photo && !payload.type) return "type is required when photo is provided";
   if (payload.type && !["jpg", "png"].includes(payload.type)) return "type must be jpg or png";
   if (!payload.spec) return "spec is required";
   if (!payload.bk) return "bk is required";
-  if (payload.size && payload.spec !== "12") return "size requires spec to be 12";
   if (payload.beauty_degree !== undefined && (payload.beauty_degree < 1 || payload.beauty_degree > 5)) {
     return "beauty_degree must be in [1.0, 5.0]";
-  }
-  if (payload.face_ratio !== undefined && (payload.face_ratio <= 0 || payload.face_ratio > 1)) {
-    return "face_ratio must be in (0, 1.0]";
-  }
-  if (
-    payload.face_center_y !== undefined &&
-    (payload.face_center_y <= 0 || payload.face_center_y >= 1)
-  ) {
-    return "face_center_y must be in (0, 1.0)";
   }
   return "";
 };
 
-async function handleIdPhotoArrangeRequest(
+async function handleIdPhotoMakeRequest(
   request: Request,
   env: Record<string, unknown> | undefined,
 ) {
@@ -171,31 +125,35 @@ async function handleIdPhotoArrangeRequest(
   }
 
   const upstreamUrl =
-    readEnv(env, "ALIYUN_IDPHOTO_URL") || "https://idp2.market.alicloudapi.com/idphoto/arrange";
+    readEnv(env, "ALIYUN_IDPHOTO_URL") || "https://idp2.market.alicloudapi.com/idphoto/make";
+
+  const sendUpstream = async () =>
+    fetch(upstreamUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `APPCODE ${appCode}`,
+        Accept: "application/json",
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify(payload),
+    });
 
   let response: Response;
   try {
     const timeout = new Promise<Response>((_, reject) => {
-      setTimeout(() => reject(new Error("Aliyun idphoto arrange request timeout")), 30000);
+      setTimeout(() => reject(new Error("Aliyun idphoto make request timeout")), 30000);
     });
 
     response = await Promise.race([
-      fetch(upstreamUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `APPCODE ${appCode}`,
-          "Content-Type": "application/json; charset=UTF-8",
-          Accept: "application/json",
-        },
-        body: JSON.stringify(payload),
-      }),
+      sendUpstream(),
       timeout,
     ]);
   } catch (error: any) {
-    return json({ error: error?.message || "Aliyun idphoto arrange request failed" }, { status: 502 });
+    return json({ error: error?.message || "Aliyun idphoto make request failed" }, { status: 502 });
   }
 
-  const upstreamText = await response.text();
+  let upstreamText = await response.text();
+
   let upstreamBody: unknown = upstreamText;
   if (upstreamText) {
     try {
@@ -208,7 +166,7 @@ async function handleIdPhotoArrangeRequest(
   if (!response.ok) {
     return json(
       {
-        error: "Aliyun idphoto arrange request failed",
+        error: "Aliyun idphoto make request failed",
         upstreamUrl,
         upstreamStatus: response.status,
         upstreamBody,
@@ -224,7 +182,7 @@ export default {
   async fetch(request: Request, env?: Record<string, unknown>) {
     const url = new URL(request.url);
     if (url.pathname === "/api/idphoto" || url.pathname === "/idphoto") {
-      return handleIdPhotoArrangeRequest(request, env);
+      return handleIdPhotoMakeRequest(request, env);
     }
 
     if (!url.pathname.startsWith("/api/")) {

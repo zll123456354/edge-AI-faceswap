@@ -9,7 +9,7 @@ const targetPath = path.join(__dirname, "../edge/env.ts");
 const appCode = process.env.ALIYUN_IDPHOTO_APPCODE || "";
 const apiUrl =
   process.env.ALIYUN_IDPHOTO_URL ||
-  "https://idp2.market.alicloudapi.com/idphoto/arrange";
+  "https://idp2.market.alicloudapi.com/idphoto/make";
 
 const content = `/**
  * Generated at build time. Do not commit secrets here.

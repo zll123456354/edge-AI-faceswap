@@ -1,18 +1,10 @@
-export type IdPhotoArrangeRequest = {
+export type IdPhotoMakeRequest = {
   photo?: string;
   type?: "jpg" | "png";
   photo_key?: string;
-  with_photo_key?: 0 | 1;
   spec: string;
   bk: string;
   beauty_degree?: number;
-  size?: string;
-  file_size?: string;
-  dpi?: number;
-  face_ratio?: number;
-  face_center_y?: number;
-  top_empty?: string;
-  head_pose_correct?: boolean;
 };
 
 const readJsonOrText = async (response: Response) => {
@@ -26,7 +18,7 @@ const readJsonOrText = async (response: Response) => {
   }
 };
 
-export async function createIdPhoto(payload: IdPhotoArrangeRequest) {
+export async function createIdPhoto(payload: IdPhotoMakeRequest) {
   const response = await fetch("/api/idphoto", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
