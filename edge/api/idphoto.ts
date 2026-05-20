@@ -95,6 +95,47 @@ const validatePayload = (payload: IdPhotoMakeBody) => {
   return "";
 };
 
+async function handleIdPhotoDownloadRequest(request: Request) {
+  if (request.method !== "GET") {
+    return json({ error: "Method Not Allowed" }, { status: 405 });
+  }
+
+  const requestUrl = new URL(request.url);
+  const rawUrl = requestUrl.searchParams.get("url") || "";
+  let imageUrl: URL;
+
+  try {
+    imageUrl = new URL(rawUrl);
+  } catch {
+    return json({ error: "Invalid image url" }, { status: 400 });
+  }
+
+  if (imageUrl.protocol !== "https:" || imageUrl.hostname !== "oapi.aisegment.com") {
+    return json({ error: "Unsupported image url" }, { status: 400 });
+  }
+
+  const upstream = await fetch(imageUrl.toString(), {
+    headers: { Accept: "image/jpeg,image/png,image/*" },
+  });
+
+  if (!upstream.ok || !upstream.body) {
+    return json(
+      { error: "Image download failed", upstreamStatus: upstream.status },
+      { status: 502 },
+    );
+  }
+
+  const contentType = upstream.headers.get("Content-Type") || "image/jpeg";
+  const extension = contentType.includes("png") ? "png" : "jpg";
+  const headers = new Headers({
+    "Content-Type": contentType,
+    "Content-Disposition": `attachment; filename="idphoto-result.${extension}"`,
+    "Cache-Control": "no-store",
+  });
+
+  return new Response(upstream.body, { status: 200, headers });
+}
+
 async function handleIdPhotoMakeRequest(
   request: Request,
   env: Record<string, unknown> | undefined,
@@ -181,6 +222,10 @@ async function handleIdPhotoMakeRequest(
 export default {
   async fetch(request: Request, env?: Record<string, unknown>) {
     const url = new URL(request.url);
+    if (url.pathname === "/api/idphoto/download") {
+      return handleIdPhotoDownloadRequest(request);
+    }
+
     if (url.pathname === "/api/idphoto" || url.pathname === "/idphoto") {
       return handleIdPhotoMakeRequest(request, env);
     }

@@ -1,41 +1,43 @@
 <template>
   <main class="app-shell">
-    <section class="hero-panel">
-      <div class="hero-copy">
-        <p class="eyebrow">Aliyun ESA Studio</p>
-        <h1>证件照制作</h1>
-        <p class="summary">
-          上传 JPG 或 PNG，自动转成接口要求的原始 Base64，由 ESA 代发到阿里云
-          `idphoto/make`。同一张图也可以直接复用检测接口返回的 `photo_key`，减少重复传输。
-        </p>
-        <div class="hero-notes">
-          <span>浏览器不暴露 AppCode</span>
-          <span>支持 photo_key 联动</span>
-          <span>JSON 制作接口</span>
-        </div>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">AI 证件照</p>
+        <h1>制作电子证件照</h1>
       </div>
+      <div class="trust-strip" aria-label="service highlights">
+        <span>JPG / PNG</span>
+        <span>标准规格</span>
+        <span>高清下载</span>
+      </div>
+    </header>
 
-      <aside class="hero-card">
-        <p class="card-kicker">接口规则</p>
-        <ul class="rule-list">
-          <li>`photo` 传原始 Base64，不带 `data:image/...` 前缀。</li>
-          <li>制作接口地址为 `idphoto/make`，请求体使用 JSON。</li>
-          <li>`photo_key` 来自环境检测等接口；与 `photo` 同时出现时由上游决定生效项。</li>
-        </ul>
-      </aside>
+    <section class="progress-strip" aria-label="制作流程">
+      <div class="progress-item active">
+        <strong>1</strong>
+        <span>上传照片</span>
+      </div>
+      <div :class="['progress-item', { active: isReady }]">
+        <strong>2</strong>
+        <span>选择规格</span>
+      </div>
+      <div :class="['progress-item', { active: Boolean(resultImage) }]">
+        <strong>3</strong>
+        <span>下载电子照</span>
+      </div>
     </section>
 
     <section class="workspace">
-      <form class="control-panel" @submit.prevent="submit">
-        <div class="section-head">
+      <form class="task-panel" @submit.prevent="submit">
+        <div class="panel-head">
           <div>
-            <p class="section-label">输入方式</p>
-            <h2>制作参数</h2>
+            <p class="section-label">照片来源</p>
+            <h2>上传或复用照片</h2>
           </div>
-          <button class="ghost-button" type="button" @click="applyPreset">常用预设</button>
+          <button class="text-button" type="button" @click="applyPreset">一寸蓝底</button>
         </div>
 
-        <div class="mode-switch" role="tablist" aria-label="source mode">
+        <div class="mode-switch" role="tablist" aria-label="照片来源">
           <button
             :class="['mode-button', { active: sourceMode === 'upload' }]"
             type="button"
@@ -48,7 +50,7 @@
             type="button"
             @click="switchMode('photo_key')"
           >
-            使用 photo_key
+            使用照片凭证
           </button>
         </div>
 
@@ -57,22 +59,22 @@
             <input accept="image/jpeg,image/png" class="hidden-input" type="file" @change="handleFileChange" />
             <span>{{ uploadedFileName || "选择 JPG / PNG" }}</span>
           </label>
-          <p class="field-help">上传后会自动转成原始 Base64，并去掉 data URL 头信息。</p>
+          <p class="field-help">建议使用正面半身照，五官清晰、光线均匀。</p>
         </div>
 
         <label v-else>
-          <span>photo_key</span>
-          <input v-model.trim="form.photo_key" placeholder="环境检测接口返回的 photo_key" />
+          <span>照片凭证</span>
+          <input v-model.trim="form.photo_key" placeholder="输入检测后生成的照片凭证" />
         </label>
 
         <div class="form-grid">
           <label>
-            <span>spec</span>
+            <span>证件照规格</span>
             <input v-model.trim="form.spec" placeholder="证件照规格 ID，如 1 或 12" />
           </label>
 
           <label>
-            <span>bk</span>
+            <span>背景颜色</span>
             <input v-model.trim="form.bk" placeholder="blue / red / white / #RRGGBB" />
           </label>
         </div>
@@ -81,7 +83,7 @@
           <summary>更多可选参数</summary>
           <div class="advanced-grid">
             <label>
-              <span>beauty_degree</span>
+              <span>美颜强度</span>
               <input v-model.trim="form.beauty_degree" placeholder="可选，1.0 - 5.0" />
             </label>
           </div>
@@ -92,38 +94,49 @@
         <button class="primary-button" :disabled="loading || !isReady" type="submit">
           {{ loading ? "制作中..." : "开始制作证件照" }}
         </button>
+
+        <div class="checkout-preview">
+          <div>
+            <p>电子照交付</p>
+            <strong>高清文件下载</strong>
+          </div>
+          <span>待接入支付</span>
+        </div>
       </form>
 
-      <div class="preview-stack">
-        <section class="preview-card">
-          <div class="section-head compact-head">
+      <section class="preview-panel">
+        <div class="preview-column">
+          <div class="panel-head compact-head">
             <div>
-              <p class="section-label">输入预览</p>
+              <p class="section-label">当前照片</p>
               <h2>原始照片</h2>
             </div>
-            <span class="mini-note">{{ sourceMode === "upload" ? (form.type || "jpg").toUpperCase() : "photo_key" }}</span>
+            <span class="mini-note">{{ sourceMode === "upload" ? (form.type || "jpg").toUpperCase() : "照片凭证" }}</span>
           </div>
 
           <div class="image-stage">
             <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="上传预览" />
             <div v-else class="empty-state">
-              {{ sourceMode === "upload" ? "等待上传照片" : "photo_key 模式下不展示原图" }}
+              {{ sourceMode === "upload" ? "等待上传照片" : "照片凭证模式下不展示原图" }}
             </div>
           </div>
-        </section>
+        </div>
 
-        <section class="preview-card">
-          <div class="section-head compact-head">
+        <div class="preview-column result-column">
+          <div class="panel-head compact-head">
             <div>
-              <p class="section-label">接口响应</p>
-              <h2>制作结果</h2>
+              <p class="section-label">成品预览</p>
+              <h2>电子证件照</h2>
             </div>
             <div class="action-row">
-              <button v-if="resultImage" class="ghost-button compact" type="button" @click="downloadResult">
-                下载图片
-              </button>
-              <button v-if="result" class="ghost-button compact" type="button" @click="copyResult">
-                复制 JSON
+              <button
+                v-if="resultImage"
+                class="ghost-button compact"
+                :disabled="downloading"
+                type="button"
+                @click="downloadResult"
+              >
+                {{ downloading ? "下载中..." : "下载电子证件照" }}
               </button>
             </div>
           </div>
@@ -133,10 +146,17 @@
             <div v-else class="empty-state">提交后会在这里展示证件照成品。</div>
           </div>
 
-          <div v-if="returnedPhotoKey" class="meta-chip">返回 photo_key: {{ returnedPhotoKey }}</div>
-          <pre v-if="result" class="result-json">{{ formattedResult }}</pre>
-        </section>
-      </div>
+          <div v-if="resultImage || returnedPhotoKey" class="result-meta">
+            <span v-if="resultSize">尺寸 {{ resultSize }}</span>
+            <span v-if="returnedPhotoKey">照片凭证 {{ returnedPhotoKey }}</span>
+          </div>
+          <details v-if="result" class="result-detail">
+            <summary>接口明细</summary>
+            <button class="text-button compact" type="button" @click="copyResult">复制 JSON</button>
+            <pre class="result-json">{{ formattedResult }}</pre>
+          </details>
+        </div>
+      </section>
     </section>
   </main>
 </template>
@@ -161,6 +181,7 @@ const photoPreviewUrl = ref("");
 const result = ref<unknown>(null);
 const error = ref("");
 const loading = ref(false);
+const downloading = ref(false);
 
 const form = reactive<FormState>({
   photo_key: "",
@@ -202,12 +223,13 @@ const resultMimeType = computed(() => {
   const candidates = [
     data?.type,
     data?.photo_type,
+    data?.data?.result,
     data?.data?.type,
     data?.data?.photo_type,
     form.type,
   ];
-  const hit = candidates.find((value) => value === "png" || value === "jpg" || value === "jpeg");
-  return hit === "png" ? "png" : "jpeg";
+  const hit = candidates.find((value) => typeof value === "string" && /(png|jpe?g)(?:$|\?)/i.test(value));
+  return hit && /png/i.test(hit) ? "png" : "jpeg";
 });
 
 const normalizeBase64Image = (value: string) => {
@@ -231,10 +253,12 @@ const resultImage = computed(() => {
     data?.image,
     data?.result_photo,
     data?.result_image,
+    data?.result,
     data?.data?.photo,
     data?.data?.image,
     data?.data?.result_photo,
     data?.data?.result_image,
+    data?.data?.result,
     data?.url,
     data?.data?.url,
   ];
@@ -255,15 +279,17 @@ const returnedPhotoKey = computed(() => {
   return candidates.find((value) => typeof value === "string" && value.trim()) || "";
 });
 
+const resultSize = computed(() => {
+  const data = result.value as any;
+  const size = data?.size || data?.data?.size;
+  if (!Array.isArray(size) || size.length < 2) return "";
+  const [width, height] = size;
+  return Number.isFinite(Number(width)) && Number.isFinite(Number(height)) ? `${width} x ${height}` : "";
+});
+
 const parseFloatField = (value: string) => {
   if (!value.trim()) return undefined;
   const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : undefined;
-};
-
-const parseIntField = (value: string) => {
-  if (!value.trim()) return undefined;
-  const numeric = Number.parseInt(value, 10);
   return Number.isFinite(numeric) ? numeric : undefined;
 };
 
@@ -361,11 +387,38 @@ const copyResult = async () => {
   await navigator.clipboard.writeText(formattedResult.value);
 };
 
-const downloadResult = () => {
-  if (!resultImage.value) return;
+const triggerBrowserDownload = (href: string) => {
+  const extension = resultMimeType.value === "png" ? "png" : "jpg";
   const link = document.createElement("a");
-  link.href = resultImage.value;
-  link.download = `idphoto-result.${resultMimeType.value === "png" ? "png" : "jpg"}`;
+  link.href = href;
+  link.download = `idphoto-result.${extension}`;
+  document.body.appendChild(link);
   link.click();
+  link.remove();
+};
+
+const downloadResult = async () => {
+  if (!resultImage.value) return;
+
+  if (!resultImage.value.startsWith("http")) {
+    triggerBrowserDownload(resultImage.value);
+    return;
+  }
+
+  downloading.value = true;
+  try {
+    const response = await fetch(`/api/idphoto/download?url=${encodeURIComponent(resultImage.value)}`);
+    if (!response.ok) throw new Error(`下载失败 (${response.status})`);
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    triggerBrowserDownload(objectUrl);
+    URL.revokeObjectURL(objectUrl);
+  } catch (downloadError: any) {
+    error.value = downloadError?.message || "下载电子证件照失败。";
+    window.open(resultImage.value, "_blank", "noopener,noreferrer");
+  } finally {
+    downloading.value = false;
+  }
 };
 </script>
