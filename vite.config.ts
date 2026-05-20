@@ -19,7 +19,9 @@ const edgeMiddleware = () => {
 
         try {
           const url = new URL(req.url, "http://localhost");
-          const handlerName = url.pathname.replace("/api/", "");
+          const handlerName = url.pathname.startsWith("/api/idphoto")
+            ? "idphoto"
+            : url.pathname.replace("/api/", "");
           const modulePath = `./edge/api/${handlerName}.ts`;
           const module = await server.ssrLoadModule(modulePath);
           const handler = module.default;
@@ -40,8 +42,9 @@ const edgeMiddleware = () => {
             });
 
             const response = await handler.fetch(request, {
-              ALIYUN_FACESWAP_APPCODE: process.env.ALIYUN_FACESWAP_APPCODE || "",
-              ALIYUN_FACESWAP_URL: process.env.ALIYUN_FACESWAP_URL || "",
+              ALIYUN_IDPHOTO_APPCODE: process.env.ALIYUN_IDPHOTO_APPCODE || "",
+              ALIYUN_IDPHOTO_URL: process.env.ALIYUN_IDPHOTO_URL || "",
+              ALIYUN_IDPHOTO_ARRANGE_URL: process.env.ALIYUN_IDPHOTO_ARRANGE_URL || "",
             });
 
             res.statusCode = response.status;

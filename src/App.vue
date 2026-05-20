@@ -5,11 +5,6 @@
         <p class="eyebrow">AI 证件照</p>
         <h1>制作电子证件照</h1>
       </div>
-      <div class="trust-strip" aria-label="service highlights">
-        <span>JPG / PNG</span>
-        <span>标准规格</span>
-        <span>高清下载</span>
-      </div>
     </header>
 
     <section class="progress-strip" aria-label="制作流程">
@@ -44,13 +39,6 @@
             @click="switchMode('upload')"
           >
             上传图片
-          </button>
-          <button
-            :class="['mode-button', { active: sourceMode === 'photo_key' }]"
-            type="button"
-            @click="switchMode('photo_key')"
-          >
-            使用照片凭证
           </button>
         </div>
 
@@ -169,14 +157,24 @@
               <p>高清电子版</p>
               <strong>{{ selectedSpecLabel }} · {{ selectedBackgroundLabel }}</strong>
             </div>
-            <button
-              class="primary-button download-button"
-              :disabled="downloading"
-              type="button"
-              @click="downloadResult"
-            >
-              {{ downloading ? "下载中..." : "下载电子证件照" }}
-            </button>
+            <div class="download-actions">
+              <button
+                class="text-button download-button"
+                :disabled="arranging || !returnedPhotoKey"
+                type="button"
+                @click="arrangeResult"
+              >
+                {{ arranging ? "排版中..." : "生成排版照" }}
+              </button>
+              <button
+                class="primary-button download-button"
+                :disabled="downloading"
+                type="button"
+                @click="downloadResult"
+              >
+                {{ downloading ? "下载中..." : "下载电子证件照" }}
+              </button>
+            </div>
           </div>
 
           <div v-if="resultImage || returnedPhotoKey" class="result-meta">
@@ -190,11 +188,24 @@
             <button class="text-button compact" type="button" @click="clearPhoto">换一张照片</button>
           </div>
 
-          <details v-if="result" class="result-detail">
-            <summary>更多信息</summary>
-            <button class="text-button compact" type="button" @click="copyResult">复制 JSON</button>
-            <pre class="result-json">{{ formattedResult }}</pre>
-          </details>
+          <section v-if="arrangeImage" class="arrange-panel">
+            <div class="choice-head">
+              <span>打印排版照</span>
+              <small>多张拼版</small>
+            </div>
+            <div class="image-stage arrange-stage">
+              <img :src="arrangeImage" alt="证件照排版结果" />
+            </div>
+            <button
+              class="primary-button download-button arrange-download"
+              :disabled="downloadingArrange"
+              type="button"
+              @click="downloadArrangeResult"
+            >
+              {{ downloadingArrange ? "下载中..." : "下载排版照" }}
+            </button>
+          </section>
+
         </div>
       </section>
     </section>
@@ -203,7 +214,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { createIdPhoto, type IdPhotoMakeRequest } from "./api/idphoto";
+import { arrangeIdPhoto, createIdPhoto, type IdPhotoMakeRequest } from "./api/idphoto";
 
 type SourceMode = "upload" | "photo_key";
 type FormState = {
@@ -219,9 +230,12 @@ const uploadedFileName = ref("");
 const photoBase64 = ref("");
 const photoPreviewUrl = ref("");
 const result = ref<unknown>(null);
+const arrangedResult = ref<unknown>(null);
 const error = ref("");
 const loading = ref(false);
 const downloading = ref(false);
+const arranging = ref(false);
+const downloadingArrange = ref(false);
 
 const specOptions = [
   { id: "12", name: "一寸照", size: "571 x 800" },
@@ -261,6 +275,7 @@ const switchMode = (mode: SourceMode) => {
   sourceMode.value = mode;
   error.value = "";
   result.value = null;
+  arrangedResult.value = null;
 
   if (mode === "upload") {
     form.photo_key = "";
@@ -316,18 +331,29 @@ const normalizeBase64Image = (value: string) => {
   return "";
 };
 
-const resultImage = computed(() => {
-  const data = result.value as any;
+const extractImageFromResponse = (data: any) => {
   const candidates = [
     data?.photo,
     data?.image,
     data?.result_photo,
     data?.result_image,
+    data?.arrange_photo,
+    data?.arrange_image,
+    data?.layout_photo,
+    data?.layout_image,
+    data?.print_photo,
+    data?.print_image,
     data?.result,
     data?.data?.photo,
     data?.data?.image,
     data?.data?.result_photo,
     data?.data?.result_image,
+    data?.data?.arrange_photo,
+    data?.data?.arrange_image,
+    data?.data?.layout_photo,
+    data?.data?.layout_image,
+    data?.data?.print_photo,
+    data?.data?.print_image,
     data?.data?.result,
     data?.url,
     data?.data?.url,
@@ -341,6 +367,14 @@ const resultImage = computed(() => {
   }
 
   return "";
+};
+
+const resultImage = computed(() => {
+  return extractImageFromResponse(result.value as any);
+});
+
+const arrangeImage = computed(() => {
+  return extractImageFromResponse(arrangedResult.value as any);
 });
 
 const returnedPhotoKey = computed(() => {
@@ -454,6 +488,7 @@ const submit = async () => {
 
 const resetResult = () => {
   result.value = null;
+  arrangedResult.value = null;
   error.value = "";
 };
 
@@ -471,38 +506,74 @@ const copyResult = async () => {
   await navigator.clipboard.writeText(formattedResult.value);
 };
 
-const triggerBrowserDownload = (href: string) => {
+const arrangeResult = async () => {
+  if (!returnedPhotoKey.value) {
+    error.value = "当前结果缺少 photo_key，无法生成排版照。";
+    return;
+  }
+
+  arranging.value = true;
+  error.value = "";
+  arrangedResult.value = null;
+
+  try {
+    arrangedResult.value = await arrangeIdPhoto({ photo_key: returnedPhotoKey.value });
+  } catch (requestError: any) {
+    error.value = requestError?.message || "证件照排版失败，请稍后重试。";
+  } finally {
+    arranging.value = false;
+  }
+};
+
+const triggerBrowserDownload = (href: string, filenamePrefix = "idphoto-result") => {
   const extension = resultMimeType.value === "png" ? "png" : "jpg";
   const link = document.createElement("a");
   link.href = href;
-  link.download = `idphoto-result.${extension}`;
+  link.download = `${filenamePrefix}.${extension}`;
   document.body.appendChild(link);
   link.click();
   link.remove();
 };
 
-const downloadResult = async () => {
-  if (!resultImage.value) return;
+const downloadImage = async (
+  imageUrl: string,
+  filenamePrefix: string,
+  setDownloading: (value: boolean) => void,
+  fallbackMessage: string,
+) => {
+  if (!imageUrl) return;
 
-  if (!resultImage.value.startsWith("http")) {
-    triggerBrowserDownload(resultImage.value);
+  if (!imageUrl.startsWith("http")) {
+    triggerBrowserDownload(imageUrl, filenamePrefix);
     return;
   }
 
-  downloading.value = true;
+  setDownloading(true);
   try {
-    const response = await fetch(`/api/idphoto/download?url=${encodeURIComponent(resultImage.value)}`);
+    const response = await fetch(`/api/idphoto/download?url=${encodeURIComponent(imageUrl)}`);
     if (!response.ok) throw new Error(`下载失败 (${response.status})`);
 
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
-    triggerBrowserDownload(objectUrl);
+    triggerBrowserDownload(objectUrl, filenamePrefix);
     URL.revokeObjectURL(objectUrl);
   } catch (downloadError: any) {
-    error.value = downloadError?.message || "下载电子证件照失败。";
-    window.open(resultImage.value, "_blank", "noopener,noreferrer");
+    error.value = downloadError?.message || fallbackMessage;
+    window.open(imageUrl, "_blank", "noopener,noreferrer");
   } finally {
-    downloading.value = false;
+    setDownloading(false);
   }
+};
+
+const downloadResult = async () => {
+  await downloadImage(resultImage.value, "idphoto-result", (value) => {
+    downloading.value = value;
+  }, "下载电子证件照失败。");
+};
+
+const downloadArrangeResult = async () => {
+  await downloadImage(arrangeImage.value, "idphoto-arrange", (value) => {
+    downloadingArrange.value = value;
+  }, "下载排版照失败。");
 };
 </script>

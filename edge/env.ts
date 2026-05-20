@@ -3,3 +3,4 @@
  */
 export const APP_CODE = "";
 export const API_URL = "https://idp2.market.alicloudapi.com/idphoto/make";
+export const ARRANGE_API_URL = "https://idp2.market.alicloudapi.com/idphoto/arrange";

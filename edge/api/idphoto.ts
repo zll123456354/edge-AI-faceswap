@@ -1,4 +1,4 @@
-import { API_URL, APP_CODE } from "../env";
+import { API_URL, APP_CODE, ARRANGE_API_URL } from "../env";
 
 type IdPhotoMakeBody = {
   photo?: string;
@@ -7,6 +7,10 @@ type IdPhotoMakeBody = {
   spec?: string;
   bk?: string;
   beauty_degree?: number;
+};
+
+type IdPhotoArrangeBody = {
+  photo_key?: string;
 };
 
 const json = (body: unknown, init: ResponseInit = {}) => {
@@ -56,9 +60,9 @@ const toNumberValue = (value: unknown) => {
   return Number.isFinite(numeric) ? numeric : undefined;
 };
 
-const parseBody = async (request: Request) => {
+const parseBody = async <TBody>(request: Request) => {
   try {
-    return (await request.json()) as IdPhotoMakeBody;
+    return (await request.json()) as TBody;
   } catch {
     return null;
   }
@@ -144,7 +148,7 @@ async function handleIdPhotoMakeRequest(
     return json({ error: "Method Not Allowed" }, { status: 405 });
   }
 
-  const body = await parseBody(request);
+  const body = await parseBody<IdPhotoMakeBody>(request);
   if (!body) {
     return json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -219,11 +223,96 @@ async function handleIdPhotoMakeRequest(
   return json(upstreamBody);
 }
 
+async function handleIdPhotoArrangeRequest(
+  request: Request,
+  env: Record<string, unknown> | undefined,
+) {
+  if (request.method !== "POST") {
+    return json({ error: "Method Not Allowed" }, { status: 405 });
+  }
+
+  const body = await parseBody<IdPhotoArrangeBody>(request);
+  if (!body) {
+    return json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const photoKey = toStringValue(body.photo_key);
+  if (!photoKey) {
+    return json({ error: "photo_key is required" }, { status: 400 });
+  }
+
+  const appCode = readEnv(env, "ALIYUN_IDPHOTO_APPCODE");
+  if (!appCode || appCode === "YOUR_APP_CODE_HERE") {
+    return json(
+      {
+        error: "AppCode is missing. Set ALIYUN_IDPHOTO_APPCODE in ESA environment variables.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const upstreamUrl =
+    readEnv(env, "ALIYUN_IDPHOTO_ARRANGE_URL") ||
+    ARRANGE_API_URL ||
+    "https://idp2.market.alicloudapi.com/idphoto/arrange";
+
+  const sendUpstream = async () =>
+    fetch(upstreamUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `APPCODE ${appCode}`,
+        Accept: "application/json",
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({ photo_key: photoKey }),
+    });
+
+  let response: Response;
+  try {
+    const timeout = new Promise<Response>((_, reject) => {
+      setTimeout(() => reject(new Error("Aliyun idphoto arrange request timeout")), 30000);
+    });
+
+    response = await Promise.race([sendUpstream(), timeout]);
+  } catch (error: any) {
+    return json({ error: error?.message || "Aliyun idphoto arrange request failed" }, { status: 502 });
+  }
+
+  let upstreamText = await response.text();
+
+  let upstreamBody: unknown = upstreamText;
+  if (upstreamText) {
+    try {
+      upstreamBody = JSON.parse(upstreamText);
+    } catch {
+      upstreamBody = upstreamText.slice(0, 2000);
+    }
+  }
+
+  if (!response.ok) {
+    return json(
+      {
+        error: "Aliyun idphoto arrange request failed",
+        upstreamUrl,
+        upstreamStatus: response.status,
+        upstreamBody,
+      },
+      { status: 502 },
+    );
+  }
+
+  return json(upstreamBody);
+}
+
 export default {
   async fetch(request: Request, env?: Record<string, unknown>) {
     const url = new URL(request.url);
     if (url.pathname === "/api/idphoto/download") {
       return handleIdPhotoDownloadRequest(request);
+    }
+
+    if (url.pathname === "/api/idphoto/arrange" || url.pathname === "/idphoto/arrange") {
+      return handleIdPhotoArrangeRequest(request, env);
     }
 
     if (url.pathname === "/api/idphoto" || url.pathname === "/idphoto") {
