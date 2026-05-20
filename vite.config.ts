@@ -1,8 +1,10 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import { fileURLToPath, URL } from "node:url";
 
 declare const Buffer: any;
+declare const Request: any;
+declare const URL: any;
+declare const console: any;
 declare const process: { env: Record<string, string | undefined> };
 
 const edgeMiddleware = () => {
@@ -62,9 +64,4 @@ const edgeMiddleware = () => {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [vue(), edgeMiddleware()],
-  resolve: {
-    alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
-    },
-  },
 })
