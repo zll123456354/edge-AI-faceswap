@@ -1,6 +1,6 @@
 {
-  "name": "edge-ai-faceswap",
-  "entry": "edge/api/faceswap.ts",
+  "name": "edge-idphoto-arrange",
+  "entry": "edge/api/idphoto.ts",
   "installCommand": "npm install",
   "assets": {
     "directory": "./dist",
