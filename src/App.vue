@@ -5,7 +5,7 @@
         <p class="eyebrow">Aliyun ESA Edge AI</p>
         <h1>AI 人像换装</h1>
         <p class="summary">
-          输入用户照片 URL、模板 ID 和美图检测 ID，由 ESA 边缘函数安全转发到阿里云美图 AI 人像换脸接口。
+          传入图片 URL 或美图 Check ID 其中一种方式，由 ESA 边缘函数安全转发到阿里云美图 AI 人像换脸接口。
         </p>
         <div class="trust-row">
           <span>AppCode 不进入浏览器</span>
@@ -25,7 +25,12 @@
 
         <label>
           <span>用户图片 URL</span>
-          <input v-model.trim="form.img_url" placeholder="https://example.com/photo.png" type="url" />
+          <input
+            v-model.trim="form.img_url"
+            :disabled="Boolean(form.mt_check_id)"
+            placeholder="和 Check ID 二选一"
+            type="url"
+          />
         </label>
 
         <div class="form-grid">
@@ -36,7 +41,11 @@
 
           <label>
             <span>美图 Check ID</span>
-            <input v-model.trim="form.mt_check_id" placeholder="check 接口返回的生成 ID" />
+            <input
+              v-model.trim="form.mt_check_id"
+              :disabled="Boolean(form.img_url)"
+              placeholder="和图片 URL 二选一"
+            />
           </label>
         </div>
 
@@ -124,12 +133,14 @@ const result = ref<unknown>(null);
 const imageFailed = ref(false);
 
 const isReady = computed(() => {
+  const hasImgUrl = Boolean(form.img_url);
+  const hasCheckId = Boolean(form.mt_check_id);
   return Boolean(
-    form.img_url &&
+    (hasImgUrl || hasCheckId) &&
+      !(hasImgUrl && hasCheckId) &&
       Number.isInteger(Number(form.template_id)) &&
       Number(form.template_id) > 0 &&
-      form.out_request_id &&
-      form.mt_check_id,
+      form.out_request_id,
   );
 });
 
@@ -158,14 +169,14 @@ const fillDemo = () => {
   form.template_id = 66;
   form.custom_watermark = "";
   form.out_request_id = createRequestId();
-  form.mt_check_id = "7304798112078627845";
+  form.mt_check_id = "";
   error.value = "";
   result.value = null;
 };
 
 const submit = async () => {
   if (!isReady.value) {
-    error.value = "请先填写图片 URL、模板 ID、请求 ID 和 mt_check_id。";
+    error.value = "请填写模板 ID、请求 ID，并在图片 URL 和 mt_check_id 中二选一。";
     return;
   }
 
@@ -175,11 +186,17 @@ const submit = async () => {
 
   try {
     const payload: FaceSwapRequest = {
-      img_url: form.img_url,
       template_id: Number(form.template_id),
       out_request_id: form.out_request_id,
-      mt_check_id: form.mt_check_id,
     };
+
+    if (form.img_url) {
+      payload.img_url = form.img_url;
+    }
+
+    if (form.mt_check_id) {
+      payload.mt_check_id = form.mt_check_id;
+    }
 
     if (form.custom_watermark) {
       payload.custom_watermark = form.custom_watermark;

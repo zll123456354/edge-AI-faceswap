@@ -53,12 +53,20 @@ const parseBody = async (request: Request) => {
 };
 
 const normalizePayload = (body: FaceSwapBody) => {
+  const imgUrl = body.img_url?.trim();
+  const mtCheckId = body.mt_check_id?.trim();
   const payload: FaceSwapBody = {
-    img_url: body.img_url?.trim(),
     template_id: Number(body.template_id),
     out_request_id: body.out_request_id?.trim(),
-    mt_check_id: body.mt_check_id?.trim(),
   };
+
+  if (imgUrl) {
+    payload.img_url = imgUrl;
+  }
+
+  if (mtCheckId) {
+    payload.mt_check_id = mtCheckId;
+  }
 
   const watermark = body.custom_watermark?.trim();
   if (watermark) {
@@ -69,10 +77,10 @@ const normalizePayload = (body: FaceSwapBody) => {
 };
 
 const validatePayload = (payload: FaceSwapBody) => {
-  if (!payload.img_url) return "img_url is required";
   if (!Number.isInteger(payload.template_id)) return "template_id must be an integer";
   if (!payload.out_request_id) return "out_request_id is required";
-  if (!payload.mt_check_id) return "mt_check_id is required";
+  if (!payload.img_url && !payload.mt_check_id) return "img_url or mt_check_id is required";
+  if (payload.img_url && payload.mt_check_id) return "img_url and mt_check_id are mutually exclusive";
   return "";
 };
 
@@ -143,6 +151,7 @@ async function handleFaceSwapRequest(request: Request, env: Record<string, unkno
     return json(
       {
         error: "Aliyun faceswap request failed",
+        upstreamUrl,
         upstreamStatus: response.status,
         upstreamBody,
       },

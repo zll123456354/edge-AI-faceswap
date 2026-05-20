@@ -1,9 +1,9 @@
 export type FaceSwapRequest = {
-  img_url: string;
+  img_url?: string;
   template_id: number;
   custom_watermark?: string;
   out_request_id: string;
-  mt_check_id: string;
+  mt_check_id?: string;
 };
 
 const readJsonOrText = async (response: Response) => {
@@ -27,7 +27,22 @@ export async function createFaceSwap(payload: FaceSwapRequest) {
   const parsed = await readJsonOrText(response);
   if (!response.ok) {
     const body = parsed.json as any;
-    throw new Error(body?.error || body?.message || parsed.text || `Request failed (${response.status})`);
+    const details = [
+      body?.error || body?.message || `Request failed (${response.status})`,
+      body?.upstreamStatus ? `upstreamStatus: ${body.upstreamStatus}` : "",
+      body?.upstreamUrl ? `upstreamUrl: ${body.upstreamUrl}` : "",
+      body?.upstreamBody
+        ? `upstreamBody: ${
+            typeof body.upstreamBody === "string"
+              ? body.upstreamBody
+              : JSON.stringify(body.upstreamBody)
+          }`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    throw new Error(details || parsed.text || `Request failed (${response.status})`);
   }
 
   return parsed.json;
